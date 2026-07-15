@@ -17,6 +17,32 @@
 - 依赖：`docker`、`systemctl`、bash 4.0+
 - 权限：需以 root 运行
 
+## 快速开始（在线安装）
+
+无需手动下载，直接以 root 运行下面任一命令即可拉起交互菜单。
+
+> 注意：本脚本是交互式的，请使用进程替换方式（`bash <(...)`），不要用 `curl ... | bash` 管道，否则菜单无法读取键盘输入。
+
+使用 curl：
+
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh)
+```
+
+使用 wget：
+
+```bash
+sudo bash <(wget -qO- https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh)
+```
+
+如需先下载到本地再运行：
+
+```bash
+curl -fsSL -o docker_delay_for_fnos.sh https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh
+chmod +x docker_delay_for_fnos.sh
+sudo ./docker_delay_for_fnos.sh
+```
+
 ## 使用方法
 
 1. 将脚本上传到 FNOS 并赋予执行权限：
