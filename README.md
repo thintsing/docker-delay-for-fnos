@@ -20,28 +20,29 @@
 
 ## 快速开始（在线安装）
 
-无需手动下载，直接以 root 运行下面任一命令即可拉起交互菜单。
+本脚本是交互式的（需要键盘输入），请先下载到本地再用 `sudo` 运行，以便菜单能正常读取输入。
 
-> 注意：本脚本是交互式的，请使用进程替换方式（`bash <(...)`），不要用 `curl ... | bash` 管道，否则菜单无法读取键盘输入。
+> ⚠️ 不要使用 `sudo bash <(curl ...)`（进程替换 + sudo）：进程替换生成的 `/dev/fd/63` 文件描述符在 `sudo` 切换用户后无法被新进程继承，会报错 `No such file or directory`。
+> ⚠️ 也不要用 `curl ... | sudo bash` 管道：脚本内的 `read` 会去读管道（curl 结束后为 EOF），导致菜单无法交互。
 
-使用 curl：
+方式一（推荐，两行）：
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh)
+curl -fsSL -o /tmp/docker_delay_for_fnos.sh https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh
+sudo bash /tmp/docker_delay_for_fnos.sh
 ```
 
-使用 wget：
+方式二（一行，用 `bash -c` 传入脚本文本，stdin 仍指向终端，菜单可交互）：
 
 ```bash
-sudo bash <(wget -qO- https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh)
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh)"
 ```
 
-如需先下载到本地再运行：
+使用 wget 时，把下载那一步替换为：
 
 ```bash
-curl -fsSL -o docker_delay_for_fnos.sh https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh
-chmod +x docker_delay_for_fnos.sh
-sudo ./docker_delay_for_fnos.sh
+wget -qO /tmp/docker_delay_for_fnos.sh https://raw.githubusercontent.com/thintsing/docker-delay-for-fnos/master/docker_delay_for_fnos.sh
+sudo bash /tmp/docker_delay_for_fnos.sh
 ```
 
 ## 使用方法
