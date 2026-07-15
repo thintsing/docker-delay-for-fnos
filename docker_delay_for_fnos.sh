@@ -3,7 +3,7 @@ set -uo pipefail
 
 #############################################
 # FNOS Docker 延迟启动管理脚本
-# Version: 2.1
+# Version: 2.2
 #############################################
 
 SCRIPT_DIR_DEFAULT="/vol1/1000/config"
@@ -52,7 +52,8 @@ main_menu(){
         echo "1. 创建延迟启动服务"
         echo "2. 删除延迟启动服务"
         echo "3. 查看启动日志"
-        echo "4. 退出"
+        echo "4. 查看当前配置"
+        echo "5. 退出"
 
         read -p "请选择: " choice
 
@@ -60,7 +61,8 @@ main_menu(){
             1) create_service ;;
             2) delete_service ;;
             3) show_log ;;
-            4) echo "退出"; exit 0 ;;
+            4) show_config ;;
+            5) echo "退出"; exit 0 ;;
             *) echo "输入错误，请重新选择"; sleep 2 ;;
         esac
 
@@ -119,20 +121,47 @@ done
 
 
 echo
+echo "输入启动顺序编号(例如 1 3 5；支持区间 1-5；输入 a 选择全部):"
 
-read -p "输入启动顺序编号(例如 1 3 5): " select_ids
+read -p "请选择: " select_ids
 
 
 selected=()
 invalid=0
 
-for id in $select_ids
+
+# 全选
+if [[ "$select_ids" =~ ^[[:space:]]*(a|\*|all)[[:space:]]*$ ]]; then
+
+selected=("${containers[@]}")
+
+else
+
+for token in $select_ids
 do
 
-if [[ $id =~ ^[0-9]+$ ]] && [ "$id" -ge 1 ] && [ "$id" -le "${#containers[@]}" ]
-then
+if [[ $token =~ ^[0-9]+-[0-9]+$ ]]; then
 
-selected+=("${containers[$((id-1))]}")
+start=${token%-*}
+end=${token#*-}
+
+if [ "$start" -ge 1 ] && [ "$end" -le "${#containers[@]}" ] && [ "$start" -le "$end" ]; then
+
+for ((n=start; n<=end; n++)); do
+selected+=("${containers[$((n-1))]}")
+done
+
+else
+
+invalid=1
+
+fi
+
+elif [[ $token =~ ^[0-9]+$ ]]; then
+
+if [ "$token" -ge 1 ] && [ "$token" -le "${#containers[@]}" ]; then
+
+selected+=("${containers[$((token-1))]}")
 
 
 else
@@ -141,7 +170,34 @@ invalid=1
 
 fi
 
+else
+
+invalid=1
+
+fi
+
 done
+
+fi
+
+
+# 去重（保持顺序）
+declare -A _seen=()
+unique_selected=()
+
+for c in "${selected[@]}"
+do
+
+if [[ -z "${_seen[$c]:-}" ]]; then
+
+_seen[$c]=1
+unique_selected+=("$c")
+
+fi
+
+done
+
+selected=("${unique_selected[@]}")
 
 
 if [ ${#selected[@]} -eq 0 ]; then
@@ -190,6 +246,27 @@ if [ -f "$script_file" ]; then
 fi
 
 
+# 生成前确认
+echo
+echo "===== 配置确认 ====="
+echo "启动脚本: $script_file"
+echo "首个容器等待: ${first_delay}s"
+echo "容器间隔: ${interval}s"
+echo "启动顺序:"
+
+for i in "${!selected[@]}"
+do
+echo "  $((i+1)). ${selected[$i]}"
+done
+
+read -p "确认生成并创建?(y/n): " confirm
+
+if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    echo "已取消"
+    return
+fi
+
+
 ################################
 #生成启动脚本
 ################################
@@ -208,11 +285,10 @@ echo "===== Docker启动任务开始 \$(date) =====" >> \$LOG
 sleep $first_delay
 
 
-#等待Docker启动
-
+#等待Docker启动（兼容 docker.service 名称差异，docker info 成功即视为就绪）
 COUNT=0
 
-while ! systemctl is-active --quiet docker
+while ! systemctl is-active --quiet docker 2>/dev/null && ! docker info >/dev/null 2>&1
 do
 
 COUNT=\$((COUNT+1))
@@ -315,7 +391,7 @@ Wants=network-online.target
 
 Type=oneshot
 
-ExecStart=$script_file
+ExecStart="$script_file"
 
 RemainAfterExit=yes
 
@@ -363,8 +439,8 @@ systemctl stop "$SERVICE_NAME" 2>/dev/null
 systemctl disable "$SERVICE_NAME" 2>/dev/null
 
 
-# 读取并清理生成脚本
-gen_script=$(sed -n 's/^ExecStart=//p' "/etc/systemd/system/$SERVICE_NAME" 2>/dev/null | head -n1)
+# 读取并清理生成脚本（去掉 ExecStart 可能的引号）
+gen_script=$(sed -n 's/^ExecStart=//p' "/etc/systemd/system/$SERVICE_NAME" 2>/dev/null | head -n1 | sed -e 's/^"//' -e 's/"$//')
 rm -f "/etc/systemd/system/$SERVICE_NAME"
 
 if [ -n "$gen_script" ] && [ -f "$gen_script" ]; then
@@ -410,6 +486,47 @@ tail -100 "$LOG_FILE"
 else
 
 echo "暂无日志"
+
+fi
+
+}
+
+
+################################
+# 查看当前配置
+################################
+
+show_config(){
+
+echo
+
+if [ ! -f "/etc/systemd/system/$SERVICE_NAME" ]; then
+
+echo "尚未创建延迟启动服务"
+
+return
+
+fi
+
+gen_script=$(sed -n 's/^ExecStart=//p' "/etc/systemd/system/$SERVICE_NAME" 2>/dev/null | head -n1 | sed -e 's/^"//' -e 's/"$//')
+
+echo "启动脚本: ${gen_script:-未知}"
+echo
+echo "计划开机启动的容器:"
+
+if [ -n "$gen_script" ] && [ -f "$gen_script" ]; then
+
+grep -o 'docker start "[^"]*"' "$gen_script" 2>/dev/null | sed 's/docker start "\(.*\)"/\1/' | nl
+
+if [ -z "$(grep -o 'docker start "[^"]*"' "$gen_script" 2>/dev/null)" ]; then
+
+grep -o 'docker start [^ ]*' "$gen_script" 2>/dev/null | sed 's/docker start //' | nl
+
+fi
+
+else
+
+echo "（未找到启动脚本，无法列出容器）"
 
 fi
 
